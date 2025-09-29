@@ -291,7 +291,7 @@ public class VDecompiler {
 				if (!call.ignoredLinks.contains(c.link)) {
 					return true;
 				} else {
-					System.out.println("Label " + call.label + " used, but ignored.");
+					System.out.println("Label " + call.labels + " used, but ignored.");
 				}
 			}
 		}
@@ -360,17 +360,17 @@ public class VDecompiler {
 		StackCommands stackResult = stack.handleInstruction(call);
 		MathCommands mathResult = MathMaker.handleInstruction(call);
 
-		if (call.label != null) {
+		if (call.labels != null) {
 			if (isJumpLabelUsed(call, method)) {
 				if (!getIsPointlessToPrintLabel(call)) {
 					out.println();
-					out.print(call.label);
+					out.print(call.labels);
 					out.println(":");
 				} else {
-					System.out.println("Pointless to label: " + call.label);
+					System.out.println("Pointless to label: " + call.labels);
 				}
 			} else {
-				System.out.println("Unused label: " + call.label);
+				System.out.println("Unused label: " + call.labels);
 			}
 		}
 
@@ -430,7 +430,7 @@ public class VDecompiler {
 				NTRArgument ad = call.definition.parameters[i];
 
 				if (call.link != null && i == call.link.argIdx) {
-					out.print(((DisassembledCall) (call.link.target)).label);
+					out.print(((DisassembledCall) (call.link.target)).labels);
 				} else {
 					printByDataType(ad.dataType, av, out);
 				}
@@ -556,7 +556,7 @@ public class VDecompiler {
 				instructions.add(c);
 				break;
 			} else {
-				if (c.label != null) {
+				if (c.labels != null) {
 					end = false;
 
 					for (DisassembledCall caller : method.instructions) {
@@ -597,7 +597,7 @@ public class VDecompiler {
 		switch (call.command.type) {
 			case ACTION_JUMP:
 				if (call.link != null && call.link.target != null) {
-					out.print(((DisassembledCall) call.link.target).label);
+					out.print(((DisassembledCall) call.link.target).labels);
 					out.print("(");
 					printFlex(call.args[0], out);
 					out.println(");");
@@ -683,7 +683,9 @@ public class VDecompiler {
 					String targetLabel = erroneousTarget;
 					int targetAddress = -1;
 					if (link != null && link.target != null) {
-						targetLabel = ((DisassembledCall) link.target).label;
+                                                // Use the first label, since they all point to the same.
+                                                // TODO: Better strategy for here.
+						targetLabel = ((DisassembledCall) link.target).labels.get(0);
 						targetAddress = link.target.pointer;
 					}
 					if (call.command.type == VCommandDataBase.CommandType.CALL) {
@@ -712,7 +714,7 @@ public class VDecompiler {
 						out.println(");");
 					} else {
 						DisassembledCall trueTarget = descendToJumpOrigin(call);
-						targetLabel = trueTarget.label;
+						targetLabel = trueTarget.labels.get(0);
 
 						if (!getIsPointlessToGoto(trueTarget, insIndex, method)) {
 							switch (trueTarget.command.type) {

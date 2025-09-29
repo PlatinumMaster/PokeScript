@@ -26,18 +26,34 @@ import javax.swing.AbstractAction;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 import javax.swing.text.BadLocationException;
 import org.fife.ui.rsyntaxtextarea.RSyntaxDocument;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
-import static org.fife.ui.rsyntaxtextarea.SyntaxConstants.SYNTAX_STYLE_PP;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rsyntaxtextarea.parser.AbstractParser;
 import org.fife.ui.rsyntaxtextarea.parser.DefaultParseResult;
 import org.fife.ui.rsyntaxtextarea.parser.ParseResult;
 import org.fife.ui.rtextarea.RTextScrollPane;
+import org.fife.rsta.ui.search.FindDialog;
+import org.fife.rsta.ui.search.ReplaceDialog;
+import org.fife.rsta.ui.search.SearchEvent;
+import static org.fife.rsta.ui.search.SearchEvent.Type.FIND;
+import static org.fife.rsta.ui.search.SearchEvent.Type.MARK_ALL;
+import static org.fife.rsta.ui.search.SearchEvent.Type.REPLACE;
+import static org.fife.rsta.ui.search.SearchEvent.Type.REPLACE_ALL;
+import org.fife.rsta.ui.search.SearchListener;
+import org.fife.ui.rsyntaxtextarea.AbstractTokenMakerFactory;
+import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
+import org.fife.ui.rsyntaxtextarea.Token;
+import org.fife.ui.rsyntaxtextarea.TokenMakerFactory;
+import org.fife.ui.rtextarea.SearchContext;
+import org.fife.ui.rtextarea.SearchEngine;
+import org.fife.ui.rtextarea.SearchResult;
 
-public class FileEditorRSTA extends RSyntaxTextArea {
+public class FileEditorRSTA extends RSyntaxTextArea implements SearchListener {
 
 	private PSIDE ide;
 	private AutoComplete ac;
@@ -51,12 +67,18 @@ public class FileEditorRSTA extends RSyntaxTextArea {
 	private RTextScrollPane scrollPane;
 
 	private PPParser parser;
+        
+        private FindDialog findDialog;
+        private ReplaceDialog replaceDialog;
 
 	public FileEditorRSTA(PSIDE ide, IDEFile file) {
 		super();
 		this.ide = ide;
 		this.file = file;
 		this.ac = ide.getAutoCompletionEngine();
+                
+                this.findDialog = new FindDialog(this.ide, this);
+                this.replaceDialog = new ReplaceDialog(this.ide, this);
 
 		setEditable(file.canWrite());
 
@@ -76,11 +98,37 @@ public class FileEditorRSTA extends RSyntaxTextArea {
 		scrollPane.getVerticalScrollBar().addAdjustmentListener(adjustmentListener);
 		scrollPane.getHorizontalScrollBar().addAdjustmentListener(adjustmentListener);
 
-		setSyntaxEditingStyle(SYNTAX_STYLE_PP);
+                AbstractTokenMakerFactory atmf = (AbstractTokenMakerFactory) TokenMakerFactory.getDefaultInstance();
+                atmf.putMapping("beaterscript", "ctrmap.pokescript.ide.BeaterScriptHighlighting");
+                setSyntaxEditingStyle("beaterscript");
+                
+                SyntaxScheme scheme = (SyntaxScheme) getSyntaxScheme().clone();
+                scheme.getStyle(Token.COMMENT_DOCUMENTATION).foreground = Color.GREEN;
+//                scheme.getStyle(Token.FUNCTION).foreground = Color.BLUE;
+                scheme.getStyle(Token.RESERVED_WORD).foreground = Color.BLUE;
+                scheme.getStyle(Token.LITERAL_NUMBER_DECIMAL_INT).foreground = Color.MAGENTA;
+                setSyntaxScheme(scheme);
+                
 		parser = new PPParser();
 		addParser(parser);
 		getDocument().addDocumentListener(marks);
 
+                getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK), "Find");
+		getActionMap().put("Find", new AbstractAction() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+                            findDialog.setVisible(true);
+			}
+		});
+                
+                getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_H, KeyEvent.CTRL_DOWN_MASK), "Replace");
+		getActionMap().put("Replace", new AbstractAction() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+                            replaceDialog.setVisible(true);
+			}
+		});
+                
 		getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, KeyEvent.CTRL_DOWN_MASK), "AutoCompleteHotkey");
 		getActionMap().put("AutoCompleteHotkey", new AbstractAction() {
 			@Override
@@ -328,4 +376,53 @@ public class FileEditorRSTA extends RSyntaxTextArea {
 			return new DefaultParseResult(this);
 		}
 	}
+        
+        @Override
+        public void searchEvent(SearchEvent e) {		
+            SearchEvent.Type type = e.getType();
+            SearchContext context = e.getSearchContext();
+            SearchResult result = null;
+
+            switch (type) {
+                    case MARK_ALL:
+                    default:
+                            result = SearchEngine.markAll(this, context);
+                            break;
+                    case FIND:
+                            result = SearchEngine.find(this, context);
+                            if (!result.wasFound() || result.isWrapped()) {
+                                    UIManager.getLookAndFeel().provideErrorFeedback(this);
+                            }
+                            break;
+                    case REPLACE:
+                            result = SearchEngine.replace(this, context);
+                            if (!result.wasFound() || result.isWrapped()) {
+                                    UIManager.getLookAndFeel().provideErrorFeedback(this);
+                            }
+                            break;
+                    case REPLACE_ALL:
+                            result = SearchEngine.replaceAll(this, context);
+                            JOptionPane.showMessageDialog(null, result.getCount() + " occurrences replaced.");
+                            break;
+            }
+
+            String text;
+            if (result != null && result.wasFound()) {
+                    text = "Text found; occurrences marked: " + result.getMarkedCount();
+            } else if (type==SearchEvent.Type.MARK_ALL) {
+                    if (result.getMarkedCount()>0) {
+                            text = "Occurrences marked: " + result.getMarkedCount();
+                    }
+                    else {
+                            text = "";
+                    }
+            } else {
+                    text = "Text not found";
+            }
+        }
+
+        @Override
+        public String getSelectedText() {
+	    return super.getSelectedText();
+        }
 }

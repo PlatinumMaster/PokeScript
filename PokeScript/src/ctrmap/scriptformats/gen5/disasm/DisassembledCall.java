@@ -12,7 +12,7 @@ public class DisassembledCall extends NTRInstructionCall {
 	
 	public VCommandDataBase.VCommand command;
 	
-	public String label;
+	public ArrayList<String> labels;
 	
 	public List<NTRInstructionLink> ignoredLinks = new ArrayList<>();
 

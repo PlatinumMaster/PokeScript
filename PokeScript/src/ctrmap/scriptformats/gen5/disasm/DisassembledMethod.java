@@ -17,7 +17,7 @@ public class DisassembledMethod {
 		if (instructions.isEmpty()) {
 			return "nullsub_" + Integer.toHexString(ptr);
 		}
-		String name = instructions.get(0).label;
+		String name = instructions.get(0).labels.get(0);
 		if (name == null) {
 			name = "malformed_routine_" + Integer.toHexString(ptr);
 		}

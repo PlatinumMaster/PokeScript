@@ -2,9 +2,12 @@ package ctrmap.scriptformats.gen5.disasm;
 
 import ctrmap.pokescript.instructions.ntr.NTRArgument;
 import ctrmap.pokescript.instructions.ntr.NTRDataType;
+import ctrmap.pokescript.instructions.ntr.NTRInstructionCall;
 import ctrmap.pokescript.instructions.ntr.NTRInstructionPrototype;
 import ctrmap.scriptformats.gen5.VCommandDataBase;
+import ctrmap.scriptformats.gen5.VCommandDataBase.CommandType;
 import ctrmap.scriptformats.gen5.VScriptFile;
+import java.io.ByteArrayOutputStream;
 import xstandard.fs.accessors.DiskFile;
 import xstandard.io.base.impl.ext.data.DataIOStream;
 import xstandard.text.FormattingUtils;
@@ -14,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import xstandard.io.util.IndentedPrintStream;
 
 public class VDisassembler {
 
@@ -101,34 +105,44 @@ public class VDisassembler {
 
 	private void createLabelsAndLinks() {
 		System.out.println("--Re-linking main methods--");
-		createLabelsImpl(publics, "main_", true, 1);
+		createLabelsImpl(publics, "main_", true, 1, true);
 		System.out.println("--Re-linking sub methods--");
-		createLabelsImpl(functionCalls, "sub_", false, 0);
+		createLabelsImpl(functionCalls, "sub_", false, 0, false);
 		System.out.println("--Re-linking jumps--");
-		createLabelsImpl(jumpLinks, "LABEL_", false, 0);
+		createLabelsImpl(jumpLinks, "LABEL_", false, 0, false);
 		System.out.println("--Re-linking actions--");
-		createLabelsImpl(actionJumps, "ActionSequence_", false, 0);
+		createLabelsImpl(actionJumps, "ActionSequence_", false, 0, false);
 	}
 
-	private void createLabelsImpl(List<LinkPrototype> links, String prefix, boolean labelByIndex, int initialIndex) {
+	private void createLabelsImpl(List<LinkPrototype> links, String prefix, boolean labelByIndex, int initialIndex, boolean arePublics) {
 		int index = initialIndex;
 		for (LinkPrototype jmp : links) {
 			DisassembledCall jumpTarget = findCallOrActionSeqByPtr(jmp.targetOffset);
 			DisassembledCall jumpSrc = findCallByPtr(jmp.sourceOffset);
 			if (jumpTarget != null) {
-				if (jumpSrc != null) {
-					System.out.println("Setting up link from " + Integer.toHexString(jumpSrc.pointer) + " to " + prefix + Integer.toHexString(jumpTarget.pointer));
-					jumpSrc.setupLinkToCall(jumpTarget);
-				} else {
-					System.out.println("SOURCE ABSENT from " + Integer.toHexString(jmp.sourceOffset) + " to " + jmp.targetOffset);
-				}
-				if (jumpTarget.label == null) {
-					if (labelByIndex) {
-						jumpTarget.label = prefix + index;
-					} else {
-						jumpTarget.label = prefix + FormattingUtils.getStrWithLeadingZeros(4, Integer.toHexString(jumpTarget.pointer));
-					}
-				}
+                                if (!arePublics) {
+                                    if (jumpSrc != null) {
+                                            System.out.println("Setting up link from " + Integer.toHexString(jumpSrc.pointer) + " to " + prefix + Integer.toHexString(jumpTarget.pointer));
+                                            jumpSrc.setupLinkToCall(jumpTarget);
+                                    } else {
+                                            System.out.println("SOURCE ABSENT from " + Integer.toHexString(jmp.sourceOffset) + " to " + jmp.targetOffset);
+                                    }
+                                }
+                                
+				if (jumpTarget.labels == null) {
+                                    jumpTarget.labels = new ArrayList<>();
+                                }
+                                if (labelByIndex) {
+                                    String new_label = prefix + index;
+                                    if (!jumpTarget.labels.contains(new_label)) {
+                                        jumpTarget.labels.add(new_label);
+                                    }
+                                } else {
+                                    String new_label = prefix + FormattingUtils.getStrWithLeadingZeros(4, Integer.toHexString(jumpTarget.pointer));
+                                    if (!jumpTarget.labels.contains(new_label)) {
+                                        jumpTarget.labels.add(new_label);
+                                    }
+                                }
 			} else {
 				System.out.println("Could not link!! from " + Integer.toHexString(jmp.sourceOffset) + " to " + Integer.toHexString(jmp.targetOffset));
 			}
@@ -373,5 +387,97 @@ public class VDisassembler {
 		methods.addAll(publicMethods);
 		methods.addAll(subMethods);
 		actionSequences.sort(comp);
+	}
+        
+        public String dump() {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		IndentedPrintStream out = new IndentedPrintStream(baos);
+
+		for (DisassembledMethod m : this.methods) {
+                    dumpMethod(m, out);
+		}
+		for (DisassembledMethod m : this.actionSequences) {
+			dumpActionSeq(m, out);
+		}
+
+		out.decrementIndentLevel();
+
+		out.close();
+		return new String(baos.toByteArray());
+	}
+        
+        private void dumpMethod(DisassembledMethod m, IndentedPrintStream out) {
+                out.incrementIndentLevel();
+                
+		for (DisassembledCall instruction : m.instructions) {    
+                    if (instruction.labels != null) {
+                        out.decrementIndentLevel();
+                        for (String label : instruction.labels) {
+                            out.println(String.format("%s:", label));
+                        }
+                        out.incrementIndentLevel();
+                    }
+
+                    String name = instruction.command.name;
+                    if (name != null) {                    
+                        StringBuilder sb = new StringBuilder();
+                        sb.append(name);
+                        sb.append(' ');
+                        for (int Index = 0; Index < instruction.args.length; ++Index) {
+                            if (instruction.command.type == CommandType.ACTION_JUMP || instruction.command.type == CommandType.CALL || instruction.command.type == CommandType.JUMP) {
+                                if (instruction.definition.parameters[Index].dataType == NTRDataType.S32) {  
+                                    boolean label_found = false;
+                                    for (DisassembledMethod method : methods) {
+                                        if (instruction.link != null && instruction.link.target.pointer == method.ptr) {
+                                            sb.append(method.getName());
+                                            label_found = true;
+                                            break;
+                                        } else {
+                                            for (DisassembledCall c : method.instructions) {   
+                                                if (instruction.link != null && c.labels != null && instruction.link.target.pointer == c.pointer) {
+                                                    sb.append(c.labels.get(0));
+                                                    label_found = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (!label_found) {
+                                        sb.append(instruction.args[Index]);
+                                        break;
+                                    }
+                                } else {
+                                    sb.append(instruction.args[Index]);
+                                }
+                            } else {
+                                sb.append(instruction.args[Index]);
+                            }
+                            if (Index < instruction.args.length - 1) {
+                                sb.append(", ");
+                            }
+                        }
+                        out.println(sb.toString());
+                    } else {
+                        out.println("label for instruction is null????");
+                    }
+		}
+                
+                out.decrementIndentLevel();
+
+		out.println();
+	}
+        
+        private void dumpActionSeq(DisassembledMethod m, IndentedPrintStream out) {
+            out.println(String.format("%s:", m.getName()));
+            out.incrementIndentLevel();
+
+            for (DisassembledCall call : m.instructions) {
+                    out.println(String.format("action %d, %d", call.definition.opCode, call.args[0]));
+            }
+            
+            out.println(String.format("action %d, %d", 0xFE, 0x0));
+            out.decrementIndentLevel();
+
+            out.println();
 	}
 }

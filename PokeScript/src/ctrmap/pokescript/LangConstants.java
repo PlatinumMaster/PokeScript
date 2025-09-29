@@ -13,17 +13,20 @@ public class LangConstants {
 	
 	public static final String[] LANG_HEADER_EXTENSIONS = new String[]{LANG_GENERAL_HEADER_EXTENSION, LANG_NATIVE_DEFINITION_HEADER_EXTENSION};
 	public static final String LANG_SOURCE_FILE_EXTENSION = ".pks";
+	public static final String LANG_RAW_FILE_EXTENSION = ".pkr";
 
 	public static final List<String> SUPPORTED_EXTENSIONS = new ArrayList<>();
 
 	static {
 		SUPPORTED_EXTENSIONS.addAll(ArraysEx.asList(LANG_HEADER_EXTENSIONS));
 		SUPPORTED_EXTENSIONS.add(LANG_SOURCE_FILE_EXTENSION);
+		SUPPORTED_EXTENSIONS.add(LANG_RAW_FILE_EXTENSION);
 	}
 
 	public static final ExtensionFilter LANG_SOURCE_FILE_EXTENSION_FILTER = new ExtensionFilter("PokéScript source", "*.pks");
+	public static final ExtensionFilter LANG_RAW_FILE_EXTENSION_FILTER = new ExtensionFilter("BeaterScript source", "*.pkr");
 	public static final ExtensionFilter LANG_HEADER_EXTENSION_FILTER = new ExtensionFilter("PokéScript header", "*.h", "*.nd");
-	public static final ExtensionFilter LANG_COMPILABLES_FILTER_COMB = ExtensionFilter.combine(LANG_SOURCE_FILE_EXTENSION_FILTER, LANG_HEADER_EXTENSION_FILTER);
+	public static final ExtensionFilter LANG_COMPILABLES_FILTER_COMB = ExtensionFilter.combine(LANG_SOURCE_FILE_EXTENSION_FILTER, LANG_RAW_FILE_EXTENSION_FILTER, LANG_HEADER_EXTENSION_FILTER);
 	public static final ExtensionFilter LANG_LIBRARY_EXTENSION_FILTER = new ExtensionFilter("PokéScript Library", "*.lib");
 
 	public static final ExtensionFilter LANG_BINARY_EXTENSION_FILTER_PAWN = new ExtensionFilter("Abstract Machine Executable", "*.amx");
