@@ -2,6 +2,17 @@
 <project-private xmlns="http://www.netbeans.org/ns/project-private/1">
     <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
-        <group/>
+        <group>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/beaterscript/Tokenizer.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/pokescript/LangCompiler.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/beaterscript/Token.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/scriptformats/gen5/VCommandDataBase.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/beaterscript/Assembler.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/pokescript/instructions/ntr/NTRDataType.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/pokescript/instructions/ntr/NTRInstructionPrototype.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/beaterscript/SubTokenType.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/beaterscript/TokenType.java</file>
+            <file>file:/C:/Users/L33TG/Documents/CTRMapVEx/CTRMap-CE/submodules/PokeScript/PokeScript/src/ctrmap/pokescript/instructions/ntr/NTRArgument.java</file>
+        </group>
     </open-files>
 </project-private>

@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="PokeScript">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/dist/PokeScript.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

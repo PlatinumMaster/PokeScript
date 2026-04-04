@@ -35,7 +35,7 @@ public class Tokenizer {
         ArrayList<Token> tokens = new ArrayList<>();
         String line;
         while ((line = reader.readLine()) != null) {
-            String line_cleaned = line.strip();
+            String line_cleaned = line.trim();
             if (line_cleaned.matches("([^:]+):")){
                 // Label; assume the data before the colon is the label.
                 String label = line_cleaned.substring(0, line_cleaned.indexOf(':'));
@@ -48,7 +48,7 @@ public class Tokenizer {
                 // Opcode; tokenize it and each of the data.
 
                 // If there data, then parse it.
-                if (!line_cleaned.isBlank()) {
+                if (!line_cleaned.isEmpty()) {
                     // Go through the line, and read the data. Assume the format <opcode> [<arg1>, <arg2>, ...]
                     String[] line_tokens = line_cleaned.split("\\s*,\\s*|\\s+");
                     tokens.add(new Token(TokenType.OPCODE, SubTokenType.NONE, line_tokens[0]));
