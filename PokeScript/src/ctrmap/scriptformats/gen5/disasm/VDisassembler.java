@@ -72,6 +72,10 @@ public class VDisassembler {
 		scr.updateLinks();
 	}
 
+	public List<LinkPrototype> getPublics() {
+		return publics;
+	}
+
 	public boolean isJumpLabelUsed(int ptr) {
 		for (LinkPrototype j : jumpLinks) {
 			if (j.targetOffset == ptr) {
