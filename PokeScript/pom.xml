@@ -19,7 +19,7 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.github.hello007</groupId>
+            <groupId>ctrmap</groupId>
             <artifactId>xstandard</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
