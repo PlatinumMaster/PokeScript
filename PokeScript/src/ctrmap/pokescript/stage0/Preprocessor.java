@@ -13,16 +13,19 @@ import ctrmap.pokescript.stage1.NCompilableMethod;
 import ctrmap.pokescript.stage1.NCompileGraph;
 import ctrmap.pokescript.types.DataType;
 import ctrmap.pokescript.types.declarers.DeclarerController;
+import ctrmap.pokescript.util.Token;
+import ctrmap.pokescript.util.TokenSlicer;
+import ctrmap.pokescript.util.Tokenizer;
 import xstandard.fs.FSFile;
 import xstandard.io.base.iface.ReadableStream;
 import xstandard.util.ArraysEx;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -32,6 +35,8 @@ public class Preprocessor {
 
 	private List<EffectiveLine> lines = new ArrayList<>();
 	private List<CommentDump> comments = new ArrayList<>();
+	private List<CompilerExceptionData> preprocessorErrors = new ArrayList<>();
+	private Map<CompilerPragma, CompilerPragma.PragmaValue> ppPragmata = new HashMap<>();
 
 	private CompilerLogger log;
 	private LangCompiler.CompilerArguments args;
@@ -71,39 +76,217 @@ public class Preprocessor {
 	public final void read(ReadableStream stream) {
 		lines.clear();
 		comments.clear();
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream.getInputStream(), StandardCharsets.UTF_8))) {
-			int line = 1;
+		preprocessorErrors.clear();
+		ppPragmata.clear();
 
-			EffectiveLine.AnalysisState state = new EffectiveLine.AnalysisState();
-			EffectiveLine.PreprocessorState ppState = new EffectiveLine.PreprocessorState();
-			ppState.defined = args.preprocessorDefinitions;
+		try {
+			String source = readStreamToString(stream);
 
-			while (reader.ready()) {
-				EffectiveLine l = readLine(line, reader, ppState, state, false, LangConstants.COMMON_LINE_TERM);
-				//System.out.print(l.data);
-				line += l.newLineCount;
-				l.trim();
-				l.analyze0(state);
-				if (l.hasType(EffectiveLine.LineType.PREPROCESSOR_COMMAND)) {
-					l.analyze1(state);
+			// Tokenize and slice into COMMENT / PREPROCESSOR_DIRECTIVE / CODE blocks
+			List<Token<PreprocessorTokenizer.TokenType>> allTokens =
+					Tokenizer.tokenize(source, PreprocessorTokenizer.RECOGNIZER);
+			List<TokenSlicer.Block<PreprocessorTokenizer.TokenType, PreprocessorTokenizer.BlockType>> blocks =
+					PreprocessorTokenizer.SLICER.slice(allTokens);
 
-					new TextPreprocessorCommandReader(l, log).processState(ppState);
-					lines.add(l);
-				} else {
-					if (ppState.getIsCodePassthroughEnabled()) {
-						lines.add(l);
-						l.analyze1(state);
+			// Build token → line-number map for accurate line tracking
+			IdentityHashMap<Token<PreprocessorTokenizer.TokenType>, Integer> tokenLineMap =
+					new IdentityHashMap<>();
+			int ln = 1;
+			for (Token<PreprocessorTokenizer.TokenType> t : allTokens) {
+				tokenLineMap.put(t, ln);
+				String tc = t.getContent();
+				for (int ci = 0; ci < tc.length(); ci++) {
+					if (tc.charAt(ci) == '\n') {
+						ln++;
 					}
 				}
 			}
-			if (!ppState.ppStack.empty()) {
-				if (!lines.isEmpty()) {
-					lines.get(lines.size() - 1).throwException("Unclosed preprocessor condition. (Count: " + ppState.ppStack.size() + ")");
+
+			EffectiveLine.AnalysisState anlState = new EffectiveLine.AnalysisState();
+			EffectiveLine.PreprocessorState ppState = new EffectiveLine.PreprocessorState();
+			ppState.defined = args.preprocessorDefinitions;
+
+			for (TokenSlicer.Block<PreprocessorTokenizer.TokenType, PreprocessorTokenizer.BlockType> block : blocks) {
+				int blockLine = block.tokens.isEmpty()
+						? 1
+						: tokenLineMap.get(block.tokens.get(0));
+
+				switch (block.type) {
+					case COMMENT: {
+						if (ppState.getIsCodePassthroughEnabled()) {
+							CommentDump cd = new CommentDump();
+							cd.startingLine = blockLine;
+							String fullText = Token.join(block.tokens);
+							cd.endLine = blockLine + countNewlines(fullText);
+							cd.contents = block.tokenContentTrimmed();
+							comments.add(cd);
+						}
+						break;
+					}
+					case PREPROCESSOR_DIRECTIVE: {
+						// Always process directives, regardless of ppState
+						// (matches original behaviour)
+						String directiveText = block.tokenContentTrimmed();
+						AntlrDirectiveProcessor.process(
+								directiveText, ppState, blockLine,
+								contextName, log, preprocessorErrors);
+						break;
+					}
+					case CODE: {
+						if (ppState.getIsCodePassthroughEnabled()) {
+							String codeText = Token.join(block.tokens);
+							splitCodeToLines(codeText, blockLine, anlState);
+						}
+						break;
+					}
 				}
 			}
+
+			if (!ppState.ppStack.empty()) {
+				if (!lines.isEmpty()) {
+					lines.get(lines.size() - 1).throwException(
+							"Unclosed preprocessor condition. (Count: "
+									+ ppState.ppStack.size() + ")");
+				} else {
+					CompilerExceptionData d = new CompilerExceptionData();
+					d.fileName = contextName;
+					d.lineNumberStart = ln;
+					d.lineNumberEnd = ln;
+					d.text = "Unclosed preprocessor condition. (Count: "
+							+ ppState.ppStack.size() + ")";
+					preprocessorErrors.add(d);
+				}
+			}
+
+			ppPragmata = ppState.pragmata;
 		} catch (IOException ex) {
 			Logger.getLogger(Preprocessor.class.getName()).log(Level.SEVERE, null, ex);
 		}
+	}
+
+	// ---- helpers for the new read() ------------------------------------
+
+	private static String readStreamToString(ReadableStream stream) throws IOException {
+		try (BufferedReader reader = new BufferedReader(
+				new InputStreamReader(stream.getInputStream(), StandardCharsets.UTF_8))) {
+			StringBuilder sb = new StringBuilder();
+			char[] buf = new char[4096];
+			int n;
+			while ((n = reader.read(buf)) != -1) {
+				sb.append(buf, 0, n);
+			}
+			return sb.toString();
+		}
+	}
+
+	private static int countNewlines(String s) {
+		int count = 0;
+		for (int i = 0; i < s.length(); i++) {
+			if (s.charAt(i) == '\n') {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * Splits a CODE block into {@link EffectiveLine}s using statement
+	 * terminators ({@code ;  {  }  :}).  Comment and preprocessor handling
+	 * is already done by the tokenizer — this method only needs to track
+	 * brace depth and the colon/annotation special cases.
+	 */
+	private void splitCodeToLines(String code, int startLine,
+								   EffectiveLine.AnalysisState state) {
+		int blevel = 0;
+		StringBuilder sb = new StringBuilder();
+		int currentLine = startLine;
+		int lineAccum = 0;
+		boolean firstNonWs = true;
+		boolean isAnnotation = false;
+
+		for (int i = 0; i < code.length(); i++) {
+			char c = code.charAt(i);
+			sb.append(c);
+
+			if (c == '\n') {
+				lineAccum++;
+				if (isAnnotation) {
+					emitLine(sb.toString(), currentLine, lineAccum, state);
+					currentLine += lineAccum;
+					sb = new StringBuilder();
+					lineAccum = 0;
+					firstNonWs = true;
+					isAnnotation = false;
+					continue;
+				}
+			}
+
+			if (firstNonWs && !Character.isWhitespace(c)) {
+				firstNonWs = false;
+				if (c == LangConstants.CH_ANNOT_KW_IDENTIFIER) {
+					isAnnotation = true;
+				}
+			}
+
+			switch (c) {
+				case '(':
+					blevel++;
+					break;
+				case ')':
+					blevel--;
+					break;
+			}
+
+			// Colon special case: `:` after `)` is a return-type separator,
+			// not a label terminator.
+			if (c == LangConstants.CH_METHOD_EXTENDS_IDENT && blevel == 0) {
+				boolean allowBreak = true;
+				for (int j = sb.length() - 2; j >= 0; j--) {
+					char c2 = sb.charAt(j);
+					if (!Character.isWhitespace(c2)) {
+						if (c2 == ')') {
+							allowBreak = false;
+						}
+						break;
+					}
+				}
+				if (!allowBreak) {
+					continue;
+				}
+			}
+
+			if (!isAnnotation && blevel == 0 && isTerminator(c)) {
+				emitLine(sb.toString(), currentLine, lineAccum, state);
+				currentLine += lineAccum;
+				sb = new StringBuilder();
+				lineAccum = 0;
+				firstNonWs = true;
+				isAnnotation = false;
+			}
+		}
+
+		// Handle remaining non-empty content
+		if (sb.length() > 0 && sb.toString().trim().length() > 0) {
+			emitLine(sb.toString(), currentLine, lineAccum, state);
+		}
+	}
+
+	private void emitLine(String data, int startingLine, int newLineCount,
+						   EffectiveLine.AnalysisState state) {
+		EffectiveLine l = new EffectiveLine();
+		l.startingLine = startingLine;
+		l.newLineCount = newLineCount;
+		l.fileName = contextName;
+		l.data = data;
+		l.trim();
+
+		if (l.data.isEmpty()) {
+			return;
+		}
+
+		l.analyze0(state);
+		lines.add(l);
+		l.analyze1(state);
 	}
 
 	public static String getStrWithoutTerminator(String s) {
@@ -257,6 +440,10 @@ public class Preprocessor {
 			cg.merge(parentGraph);
 		}
 		cg.includePaths = args.includeRoots;
+		// Transfer pragmas collected during preprocessing
+		if (ppPragmata != null) {
+			cg.pragmata.putAll(ppPragmata);
+		}
 
 		DeclarerController declarer = new DeclarerController(cg);
 
@@ -297,7 +484,7 @@ public class Preprocessor {
 	}
 
 	public List<CompilerExceptionData> collectExceptions() {
-		List<CompilerExceptionData> d = new ArrayList<>();
+		List<CompilerExceptionData> d = new ArrayList<>(preprocessorErrors);
 		for (EffectiveLine l : new ArrayList<>(lines)) {
 			d.addAll(l.getExceptionData());
 		}
@@ -305,6 +492,9 @@ public class Preprocessor {
 	}
 
 	public boolean isCompileSuccessful() {
+		if (!preprocessorErrors.isEmpty()) {
+			return false;
+		}
 		for (EffectiveLine l : lines) {
 			if (!l.exceptions.isEmpty()) {
 				return false;
@@ -375,161 +565,4 @@ public class Preprocessor {
 		return 0;
 	}
 
-	private EffectiveLine readLine(int line, Reader reader, EffectiveLine.PreprocessorState ppState, EffectiveLine.AnalysisState anlState, boolean isPreprocessor, Character... terminators) throws IOException {
-		List<Character> termList = ArraysEx.asList(terminators);
-		char c;
-		StringBuilder unfiltered = new StringBuilder();
-		StringBuilder sb = new StringBuilder();
-		StringBuilder commentSB = new StringBuilder();
-
-		boolean notifyNextComment = false;
-		boolean isInComment = false;
-		CommentDump cd = new CommentDump();
-		String commentTerm = null;
-
-		boolean firstChar = true;
-		boolean isCommentBegin = false;
-		int beginCommentLines = 0;
-
-		int lineAccumulator = 0;
-		int blevel = 0;
-		int charIndex = -1;
-
-		EffectiveLine l = new EffectiveLine();
-
-		while (reader.ready()) {
-			c = (char) reader.read();
-
-			if (!isInComment && !notifyNextComment && firstChar) {
-				if (c == LangConstants.CH_PP_KW_IDENTIFIER || c == LangConstants.CH_ANNOT_KW_IDENTIFIER) {
-					termList.add('\n');
-					isPreprocessor = true;
-				}
-				if (!Character.isWhitespace(c) && c != LangConstants.CH_COMMENT_START_CAND) { //forbid comments
-					firstChar = false;
-				}
-			} else if (c == LangConstants.CH_PP_KW_IDENTIFIER) {
-				boolean allow = true;
-				if (isInComment) {
-					allow = false;
-					for (int i = commentSB.length() - 1; i >= 0; i--) {
-						char c2 = commentSB.charAt(i);
-						if (c2 == '\n') {
-							allow = true;
-							break;
-						} else if (!Character.isWhitespace(c2)) {
-							break;
-						}
-					}
-				}
-				if (allow) {
-					EffectiveLine ppLine = readLine(line + lineAccumulator, reader, ppState, anlState, true, '\n');
-					ppLine.data = LangConstants.CH_PP_KW_IDENTIFIER + ppLine.data;
-					ppLine.analyze0(anlState);
-					ppLine.analyze1(anlState);
-					new TextPreprocessorCommandReader(ppLine, log).processState(ppState);
-					l.exceptions.addAll(ppLine.exceptions);
-					lineAccumulator += ppLine.newLineCount;
-					continue;
-				}
-			}
-
-			if (!firstChar) {
-				charIndex++;
-			}
-			if (notifyNextComment) {
-				switch (c) {
-					case LangConstants.CH_COMMENT_BLOCK:
-						commentTerm = LangConstants.CHSEQ_COMMENT_TERM_BLOCK;
-						isInComment = true;
-						break;
-					case LangConstants.CH_COMMENT_ONELINE:
-						commentTerm = LangConstants.CHSEQ_COMMENT_TERM_ONELINE;
-						isInComment = true;
-						break;
-				}
-			}
-			if (notifyNextComment && isInComment && ppState.getIsCodePassthroughEnabled()) {
-				if (charIndex <= 1) {
-					isCommentBegin = true;
-				}
-				sb.deleteCharAt(sb.length() - 1);
-				cd.startingLine = line + lineAccumulator;
-			}
-			notifyNextComment = false;
-			switch (c) {
-				case '\n':
-					lineAccumulator++;
-					if (isCommentBegin) {
-						beginCommentLines++;
-					}
-					break;
-			}
-			if (!isInComment) {
-				switch (c) {
-					case '(':
-						blevel++;
-						break;
-					case ')':
-						blevel--;
-						break;
-					case LangConstants.CH_COMMENT_START_CAND:
-						notifyNextComment = true;
-						break;
-					default:
-						break;
-				}
-			}
-
-			if (isInComment) {
-				if (unfiltered.toString().endsWith(commentTerm)) {
-					cd.endLine = line + lineAccumulator;
-					cd.contents = commentSB.toString();
-					commentSB = new StringBuilder();
-					comments.add(cd);
-					cd = new CommentDump();
-
-					isInComment = false;
-					isCommentBegin = false;
-				}
-			}
-			if (!isInComment) {
-				if (ppState.getIsCodePassthroughEnabled() || isPreprocessor) {
-					sb.append(c);
-				}
-			} else {
-				commentSB.append(c);
-			}
-
-			unfiltered.append(c);
-
-			if (c == LangConstants.CH_METHOD_EXTENDS_IDENT) {
-				//might be part of a method declaration - scan back for a bracket
-				boolean allowDDBreak = true;
-				for (int i = sb.length() - 2; i >= 0; i--) {
-					char c2 = sb.charAt(i);
-					if (!Character.isWhitespace(c2)) {
-						if (c2 == ')') {
-							allowDDBreak = false;
-						}
-						break;
-					}
-				}
-
-				if (!allowDDBreak) {
-					continue;
-				}
-			}
-
-			if (!isInComment && blevel == 0 && termList.contains(c)) {
-				break;
-			}
-		}
-		l.startingLine = line;
-		l.startingLine += beginCommentLines;
-		l.fileName = contextName;
-		l.data = sb.toString();
-		l.newLineCount = lineAccumulator;
-		return l;
-	}
 }

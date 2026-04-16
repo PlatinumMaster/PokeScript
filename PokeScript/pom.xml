@@ -15,6 +15,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <antlr4.version>4.13.2</antlr4.version>
     </properties>
 
     <dependencies>
@@ -22,6 +23,11 @@
             <groupId>ctrmap</groupId>
             <artifactId>xstandard</artifactId>
             <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.antlr</groupId>
+            <artifactId>antlr4-runtime</artifactId>
+            <version>${antlr4.version}</version>
         </dependency>
     </dependencies>
 
@@ -33,6 +39,7 @@
                 <excludes>
                     <exclude>**/*.java</exclude>
                     <exclude>**/*.form</exclude>
+                    <exclude>**/*.g4</exclude>
                 </excludes>
             </resource>
         </resources>
@@ -41,6 +48,43 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.antlr</groupId>
+                <artifactId>antlr4-maven-plugin</artifactId>
+                <version>${antlr4.version}</version>
+                <configuration>
+                    <sourceDirectory>${basedir}/src/ctrmap/pokescript/stage0/antlr</sourceDirectory>
+                    <outputDirectory>${project.build.directory}/generated-sources/antlr4/ctrmap/pokescript/stage0/antlr</outputDirectory>
+                    <visitor>true</visitor>
+                    <listener>false</listener>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>antlr4</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.4.0</version>
+                <executions>
+                    <execution>
+                        <id>add-antlr-source</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.build.directory}/generated-sources/antlr4</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

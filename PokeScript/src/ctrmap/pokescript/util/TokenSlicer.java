@@ -102,10 +102,10 @@ public class TokenSlicer<T, B> {
 		}
 		
 		private int calcBlockEndPos(int pos) {
-			if (endTokens == null) {
-				return pos;
+			if (startTokens == null) {
+				return pos - 1;
 			}
-			return pos - endTokens.length - 1;
+			return pos - startTokens.length;
 		}
 
 		private int calcBlockStartPos(int pos) {
