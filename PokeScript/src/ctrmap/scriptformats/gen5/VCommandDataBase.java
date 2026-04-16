@@ -14,10 +14,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class VCommandDataBase {
 
 	private Map<Integer, VCommand> commands = new HashMap<>();
+	private Map<String, VCommand> commands_by_name = new HashMap<>();
+
 
 	public VCommandDataBase(FSFile fsf) {
 		Yaml yml = new Yaml(fsf);
@@ -27,6 +30,7 @@ public class VCommandDataBase {
 		for (YamlNode func : yml.root.children) {
 			VCommand cmd = new VCommand(func, defPkg);
 			commands.put(cmd.def.opCode, cmd);
+                        commands_by_name.put(cmd.name, cmd);
 		}
 	}
 
@@ -50,6 +54,14 @@ public class VCommandDataBase {
 
 	public VCommand getCommandProto(int opCode) {
 		return commands.get(opCode);
+	}
+        
+        public VCommand getCommandProtoByName(String name) {
+            return commands_by_name.get(name);
+	}
+        
+        public Set<String> getCommandNames() {
+            return commands_by_name.keySet();
 	}
 
 	public static class VCommand {

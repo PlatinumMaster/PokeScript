@@ -421,7 +421,10 @@ public class PSIDE extends javax.swing.JFrame {
 				projectTree.addProject(prj);
 			}
 			String projectPath = prj.getProjectPath();
-			context.getWorkspace().saveData.putOpenedProjectPath(projectPath);
+                        IDEWorkspace workspace = context.getWorkspace();
+                        if (workspace != null) {
+                            workspace.saveData.putOpenedProjectPath(projectPath);
+                        }
 		}
 	}
 	

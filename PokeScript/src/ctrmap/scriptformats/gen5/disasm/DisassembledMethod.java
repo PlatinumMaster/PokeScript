@@ -14,13 +14,17 @@ public class DisassembledMethod {
 	}
 	
 	public String getName(){
+		String name = "";
 		if (instructions.isEmpty()) {
 			return "nullsub_" + Integer.toHexString(ptr);
-		}
-		String name = instructions.get(0).label;
-		if (name == null) {
-			name = "malformed_routine_" + Integer.toHexString(ptr);
-		}
+		}                  
+                for (DisassembledCall c : instructions) {
+                    if (c.labels != null && c.labels.size() > 0) {
+                        return c.labels.get(0);
+                    } else if (c.labels == null) {
+                        return "method_" + Integer.toHexString(ptr);
+                    }
+                }
 		return name;
 	}
 }

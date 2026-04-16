@@ -126,11 +126,14 @@ public class VDisassembler {
 				} else {
 					System.out.println("SOURCE ABSENT from " + Integer.toHexString(jmp.sourceOffset) + " to " + jmp.targetOffset);
 				}
-				if (jumpTarget.label == null) {
+				if (jumpTarget.labels == null || jumpTarget.labels.isEmpty()) {
+					if (jumpTarget.labels == null) {
+						jumpTarget.labels = new ArrayList<>();
+					}
 					if (labelByIndex) {
-						jumpTarget.label = prefix + index;
+						jumpTarget.labels.add(prefix + index);
 					} else {
-						jumpTarget.label = prefix + FormattingUtils.getStrWithLeadingZeros(4, Integer.toHexString(jumpTarget.pointer));
+						jumpTarget.labels.add(prefix + FormattingUtils.getStrWithLeadingZeros(4, Integer.toHexString(jumpTarget.pointer)));
 					}
 				}
 			} else {
